@@ -789,7 +789,10 @@ function CommandInterface() {
         if (!localModelRef.current) {
           speak('Whisper is loading on this device. The first download may take a moment.', { force: true })
           const { pipeline, env } = await import('@huggingface/transformers')
-          if (!import.meta.env.DEV) env.remoteHost = `${window.location.origin}/model-proxy/`
+          // Pages deployments do not serve the standalone Worker's /model-proxy/ route.
+          // Load from the Hub in every build so SPA fallback HTML cannot be cached as model JSON.
+          env.remoteHost = 'https://huggingface.co/'
+          env.allowLocalModels = false
           const modelProgress = expectedMegabytes => {
             const downloadedByFile = new Map()
             let displayedPercent = 0
