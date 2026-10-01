@@ -1,3 +1,4 @@
+import { CHARACTER_LIMIT, CHARACTER_LIMIT_MESSAGE, readCharacters } from '../utils/characterStorage.mjs'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -482,6 +483,7 @@ function CommandInterface() {
         level: requestedLevel,
         descriptor,
       }
+      if (readCharacters().length >= CHARACTER_LIMIT) { respond(CHARACTER_LIMIT_MESSAGE); return }
       sessionStorage.setItem(NEW_CHARACTER_COMMAND_KEY, JSON.stringify(hero))
       window.dispatchEvent(new CustomEvent('mag-create-character', { detail: hero }))
       const selected = [hero.name && `named ${hero.name}`, hero.level != null && `Level ${hero.level}`, hero.species && `Species ${hero.species}`, hero.archetype && `Archetype ${hero.archetype}`, hero.descriptor && hero.descriptor].filter(Boolean)

@@ -8,7 +8,7 @@ import archetypesText from '../content/players/archetypes.txt?raw'
 import contactsText from '../content/players/contacts.txt?raw'
 import { randomCharacterName } from '../data/characterNames'
 import { archetypeTraitPools, speciesTraitPools } from '../data/randomTraits'
-import { downloadCharacterSheetPdf } from '../utils/characterSheetPdf'
+import { CHARACTER_LIMIT, CHARACTER_LIMIT_MESSAGE, readCharacters, storeCharacter } from '../utils/characterStorage.mjs'
 import './CharacterSheet.css'
 
 const STORE_KEY = 'mag-playable-characters-v1'
@@ -2038,6 +2038,7 @@ function CharacterSheet() {
       }
       if (!requested) return
       sessionStorage.removeItem(NEW_CHARACTER_COMMAND_KEY)
+      if (readCharacters().length >= CHARACTER_LIMIT) { setNotice(CHARACTER_LIMIT_MESSAGE); return }
       const hero = newCharacter()
       const requestedName = String(requested.name || '').trim()
       const descriptor = String(requested.descriptor || '').trim().toLowerCase()
@@ -2154,12 +2155,9 @@ function CharacterSheet() {
 
   useEffect(() => {
     if (!character || character.autoSave === false) return
-    setCharacters(current => {
-      const saved = { ...character, updatedAt: Date.now() }
-      const next = [...current.filter(item => item.id !== saved.id), saved].sort((a, b) => b.updatedAt - a.updatedAt)
-      localStorage.setItem(STORE_KEY, JSON.stringify(next))
-      return next
-    })
+    const next = storeCharacter({ ...character, updatedAt: Date.now() })
+    if (next) setCharacters(next)
+    else setNotice(CHARACTER_LIMIT_MESSAGE)
   }, [character])
 
   const computed = useMemo(() => {
@@ -2832,13 +2830,15 @@ function CharacterSheet() {
   })
   const save = () => {
     const saved = { ...character, currentHp: Math.min(number(character.currentHp), computed.maxHp), updatedAt: Date.now() }
-    const next = [...characters.filter(item => item.id !== saved.id), saved].sort((a, b) => b.updatedAt - a.updatedAt)
-    localStorage.setItem(STORE_KEY, JSON.stringify(next)); setCharacters(next); setCharacter(saved); flash('Character saved locally')
+    const next = storeCharacter(saved)
+    if (!next) { flash(CHARACTER_LIMIT_MESSAGE); return }
+    setCharacters(next); setCharacter(saved); flash('Character saved locally')
   }
   const setAutoSave = checked => {
     const saved = { ...character, autoSave: checked, updatedAt: Date.now() }
-    const next = [...characters.filter(item => item.id !== saved.id), saved].sort((a, b) => b.updatedAt - a.updatedAt)
-    localStorage.setItem(STORE_KEY, JSON.stringify(next)); setCharacters(next); setCharacter(saved)
+    const next = storeCharacter(saved)
+    if (!next) { flash(CHARACTER_LIMIT_MESSAGE); return }
+    setCharacters(next); setCharacter(saved)
     flash(checked ? 'Autosave enabled' : 'Autosave disabled for this Hero')
   }
   const applyArchetype = name => {
@@ -2902,8 +2902,10 @@ function CharacterSheet() {
   }
   const importFile = event => {
     const file = event.target.files?.[0]; if (!file) return
+    if (readCharacters().length >= CHARACTER_LIMIT) { event.target.value = ''; flash(CHARACTER_LIMIT_MESSAGE); return }
     const reader = new FileReader()
     reader.onload = () => { try {
+      if (readCharacters().length >= CHARACTER_LIMIT) { flash(CHARACTER_LIMIT_MESSAGE); return }
       const data = JSON.parse(reader.result)
       if (!data.name || !data.stats || !data.skills) throw new Error()
       setCharacter({ ...newCharacter(), ...normalizeXpTracking(data), id: crypto.randomUUID(), updatedAt: Date.now() }); flash('Character imported')
@@ -2916,15 +2918,6 @@ function CharacterSheet() {
     const fileName = (character.name || 'Hero').replace(/[<>:"/\\|?*]+/g, '-').trim() || 'Hero'
     link.href = url; link.download = `${fileName}.MAGHero`; link.click(); URL.revokeObjectURL(url)
   }
-  const downloadPdf = async () => {
-    try {
-      await downloadCharacterSheetPdf({ character, computed, stats, skills: skillDefs, weaponTypes })
-      flash('PDF downloaded')
-    } catch (error) {
-      console.error('Character sheet PDF download failed', error)
-      flash('PDF download failed. Please try again.')
-    }
-  }
   const checkRoll = (label, modifier, target = '') => {
     const natural = rollDie(20); const total = natural + number(modifier); const tn = target === '' ? null : number(target)
     setRoll({ kind: 'check', label, natural, modifier: number(modifier), total, tn,
@@ -2935,6 +2928,7 @@ function CharacterSheet() {
     setRoll({ kind: 'die', label: `d${sides}`, die: sides, natural, modifier: 0, total: natural })
   }
   const createHero = () => {
+    if (readCharacters().length >= CHARACTER_LIMIT) { flash(CHARACTER_LIMIT_MESSAGE); return }
     setDeathwatch(null)
     setDeathwatchHidden(false)
     setCharacter(newCharacter())
@@ -2960,8 +2954,8 @@ function CharacterSheet() {
       <div className="library-actions"><button className="primary" onClick={createHero}>＋ Create New Hero</button><button onClick={() => fileRef.current.click()}>⇧ Upload Character</button></div>
       <input ref={fileRef} className="visually-hidden" type="file" onChange={importFile} />
     </div>
-    <section className="saved-library"><h2>Saved Heroes</h2>{characters.length === 0 ? <div className="empty-state"><strong>No saved Heroes yet</strong><span>Your characters stay in this browser using local storage.</span></div> : <div className="character-grid">{characters.map(hero => <article className="character-card" key={hero.id}><div><span>LEVEL {hero.level || 0}</span><h3>{hero.name}</h3><p>{[hero.species, hero.archetype].filter(Boolean).join(' • ') || 'Unwritten legend'}</p></div><div className="card-actions"><button className="primary" onClick={() => setCharacter(normalizeXpTracking(structuredClone(hero)))}>Load</button><button className="danger" onClick={() => setPendingDelete({ id: hero.id, name: hero.name })}>Delete</button></div></article>)}</div>}</section>
-    {notice && <div className="toast">{notice}</div>}
+    <section className="saved-library"><h2>Saved Heroes ({characters.length}/{CHARACTER_LIMIT})</h2><p>The portfolio version supports up to six characters. Delete a saved Hero to make room for another.</p>{characters.length === 0 ? <div className="empty-state"><strong>No saved Heroes yet</strong><span>Your characters stay in this browser using local storage.</span></div> : <div className="character-grid">{characters.map(hero => <article className="character-card" key={hero.id}><div><span>LEVEL {hero.level || 0}</span><h3>{hero.name}</h3><p>{[hero.species, hero.archetype].filter(Boolean).join(' • ') || 'Unwritten legend'}</p></div><div className="card-actions"><button className="primary" onClick={() => setCharacter(normalizeXpTracking(structuredClone(hero)))}>Load</button><button className="danger" onClick={() => setPendingDelete({ id: hero.id, name: hero.name })}>Delete</button></div></article>)}</div>}</section>
+    {notice && <div className="toast" role="status">{notice}</div>}
     {showWelcome && <CharacterSheetWelcome close={() => setShowWelcome(false)}/>}
     {pendingDelete && <ConfirmModal
       eyebrow="DELETE HERO"
@@ -3001,7 +2995,7 @@ function CharacterSheet() {
     return usedByOtherSkills >= available
   }
   return <div className={`sheet-page ${number(character.currentHp) < 0 ? 'sheet-page-danger' : ''}`}>
-    <div className="sheet-toolbar-region"><div className="sheet-toolbar"><button onClick={() => setCharacter(null)}>← Heroes</button><div className="toolbar-title"><strong>{character.name || 'Unnamed Hero'}</strong><span>Level {computed.level}</span></div><button onClick={createHero}>New</button><button onClick={() => fileRef.current.click()}><span className="load-label-full">Load File</span><span className="load-label-mobile">Load</span></button><button onClick={exportCharacter}>Export</button><button onClick={downloadPdf} aria-label="Download character sheet PDF"><span className="pdf-label-full">Download PDF</span><span className="pdf-label-mobile">PDF</span></button><label className="autosave-toggle"><input type="checkbox" checked={character.autoSave !== false} onChange={e => setAutoSave(e.target.checked)}/><span>Autosave</span></label><button className="primary" onClick={save}>Save</button><input ref={fileRef} className="visually-hidden" type="file" onChange={importFile} /></div>{deathwatch && deathwatch.mode !== 'audio' && deathwatch.phase !== 'resolved' && deathwatchHidden && <button type="button" className="dying-toast" onClick={() => setDeathwatchHidden(false)}><strong>You’re dying.</strong><span>Click here to continue the Death Clock.</span></button>}</div>
+    <div className="sheet-toolbar-region"><div className="sheet-toolbar"><button onClick={() => setCharacter(null)}>← Heroes</button><div className="toolbar-title"><strong>{character.name || 'Unnamed Hero'}</strong><span>Level {computed.level}</span></div><button onClick={createHero}>New</button><button onClick={() => fileRef.current.click()}><span className="load-label-full">Load File</span><span className="load-label-mobile">Load</span></button><button onClick={exportCharacter}>Export</button><label className="autosave-toggle"><input type="checkbox" checked={character.autoSave !== false} onChange={e => setAutoSave(e.target.checked)}/><span>Autosave</span></label><button className="primary" onClick={save}>Save</button><input ref={fileRef} className="visually-hidden" type="file" onChange={importFile} /></div>{deathwatch && deathwatch.mode !== 'audio' && deathwatch.phase !== 'resolved' && deathwatchHidden && <button type="button" className="dying-toast" onClick={() => setDeathwatchHidden(false)}><strong>You’re dying.</strong><span>Click here to continue the Death Clock.</span></button>}</div>
     <header className="sheet-header"><img src="/multiverse%20adventurers%20guild%20icon.png" alt="Guild shield"/><div><span className="eyebrow sheet-eyebrow">MULTIVERSE ADVENTURERS GUILD</span><h1>Character Sheet</h1></div><div className="identity-fields">
       <Field label="Hero name" value={character.name} onChange={setCharacterName} wide/>
       <IdentityChoice label="Species" href="/players#species" help="Species describes what kind of being your Hero is. It is primarily a roleplaying choice and does not limit your Stats or Skills." value={character.species} options={speciesNames} onChange={setSpecies}/>
@@ -3056,7 +3050,7 @@ function CharacterSheet() {
       {(row,i)=><><input aria-label="Item or trait" placeholder="Item / Trait" value={row.name} onChange={e=>update(['items',i,'name'],e.target.value)}/><AutoTextarea placeholder="Description" value={row.description ?? [row.bonus,row.appliesTo].filter(Boolean).join(' — ')} onChange={value=>update(['items',i,'description'],value)}/><button className="icon-button" onClick={()=>deleteRow('items',row.id)}>×</button></>}
     </EditableTable>
     <div className="sheet-columns lower"><EditableTable title="Contacts" icon="♟" subtitle={`You begin with 3 + Charisma (${Math.max(0, 3 + number(character.stats.charisma))}) Contacts.`} rows={character.contacts} add={() => addRow('contacts',{name:'',role:''})} columns={['Name','Relationship / Role','']}>{(row,i)=><><label className="contact-field"><span>Name</span><input aria-label="Contact name" placeholder="Contact name" value={row.name} onChange={e=>update(['contacts',i,'name'],e.target.value)}/></label><label className="contact-field"><span>Role</span><ContactRoleChoice value={row.role} onChange={value=>setContactRole(i,value)}/></label><button className="icon-button" onClick={()=>deleteRow('contacts',row.id)}>×</button></>}</EditableTable><section className="sheet-section notes"><SectionTitle icon="✎" title="Session Notes"/><textarea value={character.notes} onChange={e=>update(['notes'],e.target.value)} placeholder="Conditions, mission clues, inventory, reminders…"/></section></div>
-    {notice && <div className="toast">{notice}</div>}
+    {notice && <div className="toast" role="status">{notice}</div>}
     {showWelcome && <CharacterSheetWelcome close={() => setShowWelcome(false)}/>}
     {levelUp && <LevelUpModal level={levelUp} close={() => setLevelUp(null)}/>}
     {roll && <RollModal roll={roll} close={() => setRoll(null)} damage={() => damageRoll(roll)}/>}
