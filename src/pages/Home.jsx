@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import appVersion from '../data/appVersion'
 import './pages.css'
 
 function Home() {
@@ -48,14 +49,19 @@ function Home() {
         </div>
         <article className="update-entry">
           <header className="update-release">
-            <span>MINOR RELEASE</span>
-            <h3>Version 0.11.0</h3>
+            <span>PORTFOLIO RELEASE</span>
+            <h3>Version {appVersion.replace(/^v/, '')}</h3>
           </header>
           <div className="update-notes">
-            <h4>Patch notes</h4>
-            <ul>
-              <li>Character PDF downloads are now in public beta. Find the Download PDF button at the top of each character sheet. By the end of 2026, downloads will become a paid feature available only to members.</li>
-            </ul>
+            <h4>Portfolio-only build</h4>
+            <p>
+              This build is the portfolio-only version of Multiverse Adventurers Guild.
+              It supports up to six saved characters and does not include character PDF downloads.
+            </p>
+            <p>
+              All modern features can be found on the{' '}
+              <a href="https://multiverseadventurersguild.com/">main Multiverse Adventurers Guild site</a>.
+            </p>
           </div>
         </article>
       </section>
