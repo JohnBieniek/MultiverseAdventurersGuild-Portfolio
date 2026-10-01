@@ -56,7 +56,6 @@ function Home() {
             <h4>Portfolio-only build</h4>
             <p>
               This build is the portfolio-only version of Multiverse Adventurers Guild.
-              It supports up to six saved characters and does not include character PDF downloads.
             </p>
             <p>
               All modern features can be found on the{' '}
