@@ -2,6 +2,8 @@
 
 A modern React-based website for the Multiverse Adventurers Guild, upgraded from Wix.
 
+[![Multiverse Adventurers Guild architecture](docs/architecture.svg)](docs/architecture.md)
+
 ## Getting Started
 
 ### Prerequisites
